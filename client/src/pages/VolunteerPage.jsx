@@ -6,45 +6,52 @@ const SKILLS = ['General', 'Logistics', 'Medical', 'Teaching'];
 const SLOTS  = ['Morning', 'Afternoon', 'Evening'];
 
 const STATUS_CONFIG = {
-  Assigned:  { color: 'bg-yellow-100 text-yellow-700', label: 'Awaiting Response' },
-  Accepted:  { color: 'bg-blue-100 text-blue-700',     label: 'Accepted' },
-  Rejected:  { color: 'bg-red-100 text-red-700',       label: 'Rejected' },
-  Completed: { color: 'bg-green-100 text-green-700',   label: 'Completed' },
+  Assigned:  { pill: 'bg-amber-50 text-amber-600 border border-amber-200',       dot: 'bg-amber-500',   label: 'Awaiting Response' },
+  Accepted:  { pill: 'bg-sky-50 text-sky-600 border border-sky-200',             dot: 'bg-sky-500',     label: 'Accepted' },
+  Rejected:  { pill: 'bg-rose-50 text-rose-600 border border-rose-200',          dot: 'bg-rose-500',    label: 'Rejected' },
+  Completed: { pill: 'bg-emerald-50 text-emerald-600 border border-emerald-200', dot: 'bg-emerald-500', label: 'Completed' },
 };
 
+const URGENCY_COLOR = { 1: '#10b981', 2: '#f59e0b', 3: '#ef4444' };
 const URGENCY_LABEL = { 1: 'Low', 2: 'Medium', 3: 'High' };
-const URGENCY_COLOR = { 1: 'text-green-600', 2: 'text-yellow-600', 3: 'text-red-600' };
+const CATEGORY_COLOR = { Food: '#f97316', Health: '#ef4444', Education: '#3b82f6', Shelter: '#10b981' };
+
+const INPUT = 'w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent bg-gray-50 focus:bg-white transition';
 
 export default function VolunteerPage() {
   const { user } = useAuth();
   const [assignments, setAssignments] = useState([]);
   const [profile,     setProfile]     = useState(null);
-  const [form, setForm] = useState({ skills: [], availableSlots: [], availability: true, city: '', latitude: '', longitude: '' });
-  const [regMsg,  setRegMsg]  = useState('');
-  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ skills: [], availableSlots: [], availability: true, city: '' });
+  const [regMsg,     setRegMsg]     = useState('');
+  const [loading,    setLoading]    = useState(false);
   const [responding, setResponding] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const fetchData = () => {
-    api.get('/assignments/mine').then(({ data }) => setAssignments(data)).catch(() => {});
-    api.get('/volunteer/me').then(({ data }) => setProfile(data)).catch(() => {});
+    Promise.all([
+      api.get('/assignments/mine').catch(() => ({ data: [] })),
+      api.get('/volunteer/me').catch(() => ({ data: null })),
+    ]).then(([a, p]) => {
+      setAssignments(a.data || []);
+      setProfile(p.data);
+      setDataLoading(false);
+    });
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  const toggleItem = (key, val) =>
-    setForm((f) => ({ ...f, [key]: f[key].includes(val) ? f[key].filter((x) => x !== val) : [...f[key], val] }));
+  const toggle = (key, val) =>
+    setForm(f => ({ ...f, [key]: f[key].includes(val) ? f[key].filter(x => x !== val) : [...f[key], val] }));
 
-  const handleRegister = async (e) => {
+  const handleRegister = async e => {
     e.preventDefault();
-    if (form.skills.length === 0) return setRegMsg('Select at least one skill.');
+    if (!form.skills.length) return setRegMsg('Please select at least one skill.');
+    if (!form.city.trim())   return setRegMsg('Please enter your city.');
     setLoading(true);
     try {
-      await api.post('/volunteer', {
-        userId: user._id, ...form,
-        latitude:  form.latitude  ? Number(form.latitude)  : null,
-        longitude: form.longitude ? Number(form.longitude) : null,
-      });
-      setRegMsg('✅ Registered! Tasks will appear once admin runs matching.');
+      await api.post('/volunteer', { userId: user._id, ...form });
+      setRegMsg('');
       fetchData();
     } catch (err) {
       setRegMsg(err.response?.data?.message || 'Registration failed.');
@@ -53,134 +60,185 @@ export default function VolunteerPage() {
 
   const respond = async (id, status) => {
     setResponding(id);
-    try {
-      await api.patch(`/assignments/${id}/respond`, { status });
-      fetchData();
-    } finally { setResponding(null); }
+    try { await api.patch(`/assignments/${id}/respond`, { status }); fetchData(); }
+    finally { setResponding(null); }
   };
 
+  const completedCount = assignments.filter(a => a.status === 'Completed').length;
+  const pendingCount   = assignments.filter(a => a.status === 'Assigned').length;
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">🙋 Volunteer Dashboard</h2>
-
-      {/* My Tasks */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-gray-700 mb-3">My Assigned Tasks</h3>
-        {assignments.length === 0 ? (
-          <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-400 text-sm border border-dashed border-gray-200">
-            No tasks assigned yet.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {assignments.map((a) => {
-              const cfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.Assigned;
-              const req = a.requestId;
-              return (
-                <div key={a._id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
-                      <p className="font-semibold text-gray-800">{req?.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {req?.category} · {req?.city}, {req?.area} · 👥 {req?.peopleAffected}
-                      </p>
-                      <p className={`text-xs font-semibold mt-1 ${URGENCY_COLOR[req?.urgency]}`}>
-                        ⚡ {URGENCY_LABEL[req?.urgency]} urgency · Score: {req?.priorityScore}
-                      </p>
-                    </div>
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${cfg.color}`}>
-                      {cfg.label}
-                    </span>
-                  </div>
-
-                  {/* Action buttons */}
-                  {a.status === 'Assigned' && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => respond(a._id, 'Accepted')} disabled={responding === a._id}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 rounded-lg transition disabled:opacity-60"
-                      >✅ Accept</button>
-                      <button
-                        onClick={() => respond(a._id, 'Rejected')} disabled={responding === a._id}
-                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold py-2 rounded-lg transition disabled:opacity-60"
-                      >❌ Reject</button>
-                    </div>
-                  )}
-                  {a.status === 'Accepted' && (
-                    <button
-                      onClick={() => respond(a._id, 'Completed')} disabled={responding === a._id}
-                      className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white text-xs font-semibold py-2 rounded-lg transition disabled:opacity-60"
-                    >🏁 Mark as Completed</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+    <div className="p-6 max-w-[1000px] mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-gray-900">Volunteer Dashboard</h1>
+        <p className="text-sm text-gray-400 mt-0.5">Manage your assignments and profile</p>
       </div>
 
-      {/* Registration form — show only if not registered */}
-      {!profile && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Register as Volunteer</h3>
-          <form onSubmit={handleRegister} className="flex flex-col gap-4">
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">Skills *</p>
-              <div className="flex flex-wrap gap-2">
-                {SKILLS.map((s) => (
-                  <button type="button" key={s} onClick={() => toggleItem('skills', s)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${form.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
-                  >{s}</button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">Available Slots</p>
-              <div className="flex flex-wrap gap-2">
-                {SLOTS.map((s) => (
-                  <button type="button" key={s} onClick={() => toggleItem('availableSlots', s)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${form.availableSlots.includes(s) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'}`}
-                  >{s}</button>
-                ))}
-              </div>
-            </div>
-
-            <input placeholder="Your city *" value={form.city} required
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <input placeholder="Latitude (optional)" type="number" step="any" value={form.latitude}
-                onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-                className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-              <input placeholder="Longitude (optional)" type="number" step="any" value={form.longitude}
-                onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-                className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input type="checkbox" checked={form.availability}
-                onChange={(e) => setForm({ ...form, availability: e.target.checked })}
-                className="accent-indigo-600"
-              />
-              Available for assignments
-            </label>
-
-            {regMsg && <p className="text-sm text-indigo-600">{regMsg}</p>}
-            <button type="submit" disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-60">
-              {loading ? 'Registering...' : 'Register'}
-            </button>
-          </form>
+      {dataLoading ? (
+        <div className="flex items-center justify-center h-48">
+          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
         </div>
-      )}
+      ) : (
+        <div className="flex flex-col gap-6">
+          {/* Profile banner */}
+          {profile && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+                <span className="text-indigo-600 text-lg font-bold">{user?.name?.[0]?.toUpperCase()}</span>
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900">{user?.name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{user?.email} · {profile.city}</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {profile.skills.map(s => (
+                    <span key={s} className="text-[11px] font-semibold bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full border border-indigo-100">{s}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-4 shrink-0">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-gray-900">{assignments.length}</p>
+                  <p className="text-xs text-gray-400">Total</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-amber-500">{pendingCount}</p>
+                  <p className="text-xs text-gray-400">Pending</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-emerald-500">{completedCount}</p>
+                  <p className="text-xs text-gray-400">Done</p>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {profile && assignments.length === 0 && (
-        <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-sm text-green-700">
-          ✅ You're registered in <strong>{profile.city}</strong> with skills: <strong>{profile.skills.join(', ')}</strong>.
-          Tasks will appear once admin runs the matching engine.
+          {/* Assignments */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-800">My Assigned Tasks</h2>
+              <span className="text-xs text-gray-400">{assignments.length} total</span>
+            </div>
+
+            {assignments.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center">
+                <p className="text-gray-400 text-sm">No tasks assigned yet.</p>
+                <p className="text-gray-300 text-xs mt-1">Tasks will appear once an admin runs the matching engine.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {assignments.map(a => {
+                  const cfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.Assigned;
+                  const req = a.requestId;
+                  return (
+                    <div key={a._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition">
+                      <div className="h-1" style={{ backgroundColor: CATEGORY_COLOR[req?.category] }} />
+                      <div className="p-5">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900 text-sm">{req?.title}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{req?.city}, {req?.area}</p>
+                          </div>
+                          <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 ${cfg.pill}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                            {cfg.label}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 text-xs mb-3">
+                          <span className="font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: CATEGORY_COLOR[req?.category]+'18', color: CATEGORY_COLOR[req?.category] }}>
+                            {req?.category}
+                          </span>
+                          <span className="flex items-center gap-1 font-semibold" style={{ color: URGENCY_COLOR[req?.urgency] }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: URGENCY_COLOR[req?.urgency] }} />
+                            {URGENCY_LABEL[req?.urgency]} Urgency
+                          </span>
+                          <span className="text-gray-400">👥 {req?.peopleAffected} affected</span>
+                          <span className="text-indigo-600 font-bold">Score: {req?.priorityScore}</span>
+                        </div>
+
+                        {a.status === 'Assigned' && (
+                          <div className="flex gap-2 pt-3 border-t border-gray-100">
+                            <button onClick={() => respond(a._id, 'Accepted')} disabled={responding === a._id}
+                              className="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-2 rounded-xl transition disabled:opacity-60">
+                              Accept
+                            </button>
+                            <button onClick={() => respond(a._id, 'Rejected')} disabled={responding === a._id}
+                              className="flex-1 bg-gray-100 hover:bg-rose-50 text-gray-600 hover:text-rose-600 text-xs font-semibold py-2 rounded-xl transition disabled:opacity-60">
+                              Decline
+                            </button>
+                          </div>
+                        )}
+                        {a.status === 'Accepted' && (
+                          <button onClick={() => respond(a._id, 'Completed')} disabled={responding === a._id}
+                            className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 rounded-xl transition disabled:opacity-60 border-t border-gray-100 pt-3">
+                            Mark as Completed
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Registration form */}
+          {!profile && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h2 className="text-sm font-semibold text-gray-800 mb-1">Register as Volunteer</h2>
+              <p className="text-xs text-gray-400 mb-5">Set up your profile so the system can match you to requests.</p>
+
+              <form onSubmit={handleRegister} className="flex flex-col gap-5">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Skills <span className="text-rose-500">*</span></p>
+                  <div className="flex flex-wrap gap-2">
+                    {SKILLS.map(s => (
+                      <button type="button" key={s} onClick={() => toggle('skills', s)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${form.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Available Time Slots</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SLOTS.map(s => (
+                      <button type="button" key={s} onClick={() => toggle('availableSlots', s)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${form.availableSlots.includes(s) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-300'}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Your City <span className="text-rose-500">*</span></label>
+                  <input placeholder="e.g. Ahmedabad" value={form.city} required
+                    onChange={e => setForm({ ...form, city: e.target.value })} className={INPUT} />
+                </div>
+
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={form.availability}
+                    onChange={e => setForm({ ...form, availability: e.target.checked })}
+                    className="w-4 h-4 accent-indigo-600 rounded" />
+                  <span className="text-sm text-gray-600">I am currently available for assignments</span>
+                </label>
+
+                {regMsg && (
+                  <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3 py-2.5 rounded-xl">{regMsg}</div>
+                )}
+
+                <button type="submit" disabled={loading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-2">
+                  {loading ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Registering...</> : 'Register as Volunteer'}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -18,7 +18,7 @@ const URGENCY_CONFIG = {
 };
 
 export default function RequestCard({ request }) {
-  const { title, description, category, city, area, urgency, peopleAffected, priorityScore, status, imageUrl, severity, submittedBy } = request;
+  const { title, description, category, city, area, urgency, peopleAffected, priorityScore, status, imageUrl, submittedBy } = request;
   const urg = URGENCY_CONFIG[urgency] || URGENCY_CONFIG[1];
 
   return (
@@ -47,7 +47,6 @@ export default function RequestCard({ request }) {
             <span className={`w-2 h-2 rounded-full ${urg.dot}`}></span>
             {urg.label} Urgency
           </span>
-          {severity && <span className="text-gray-400">· Severity: {severity}</span>}
         </div>
 
         <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-auto">

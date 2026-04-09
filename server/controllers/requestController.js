@@ -1,4 +1,3 @@
-const XLSX    = require('xlsx');
 const Request = require('../models/Request');
 
 // GET /api/requests
@@ -7,7 +6,9 @@ exports.getAllRequests = async (req, res) => {
     const filter = {};
     if (req.query.status)   filter.status   = req.query.status;
     if (req.query.category) filter.category = req.query.category;
-    const requests = await Request.find(filter).populate('submittedBy', 'name email').sort({ createdAt: -1 });
+    const requests = await Request.find(filter)
+      .populate('submittedBy', 'name email')
+      .sort({ createdAt: -1 });
     res.json(requests);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -17,7 +18,9 @@ exports.getAllRequests = async (req, res) => {
 // GET /api/requests/sorted
 exports.getSortedRequests = async (req, res) => {
   try {
-    const requests = await Request.find().populate('submittedBy', 'name email').sort({ priorityScore: -1 });
+    const requests = await Request.find()
+      .populate('submittedBy', 'name email')
+      .sort({ priorityScore: -1 });
     res.json(requests);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -43,7 +46,7 @@ exports.createRequest = async (req, res) => {
 
     const request = await new Request({
       title, description, category, city, area,
-      urgency: Number(urgency),
+      urgency:        Number(urgency),
       peopleAffected: Number(peopleAffected),
       latitude:  latitude  ? Number(latitude)  : null,
       longitude: longitude ? Number(longitude) : null,
@@ -69,10 +72,15 @@ exports.updateRequestStatus = async (req, res) => {
   }
 };
 
-// POST /api/requests/upload  — CSV / Excel
+// POST /api/requests/upload — CSV/Excel via multer + xlsx
 exports.uploadRequests = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    let XLSX;
+    try { XLSX = require('xlsx'); } catch {
+      return res.status(500).json({ message: 'xlsx package not installed. Run: npm install xlsx' });
+    }
 
     const workbook = XLSX.readFile(req.file.path);
     const sheet    = workbook.Sheets[workbook.SheetNames[0]];
@@ -91,7 +99,6 @@ exports.uploadRequests = async (req, res) => {
       submittedBy:    req.user?._id || null,
     }));
 
-    // Use save() per doc so pre-save hook fires for priorityScore
     const saved = await Promise.all(docs.map((d) => new Request(d).save()));
     res.status(201).json({ inserted: saved.length, requests: saved });
   } catch (err) {
