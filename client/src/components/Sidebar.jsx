@@ -4,20 +4,23 @@ import { useAuth } from '../context/AuthContext';
 
 const ROLE_NAV = {
   Admin: [
-    { to: '/dashboard',   icon: GridIcon,    label: 'Dashboard' },
-    { to: '/requests',    icon: ListIcon,    label: 'Requests' },
-    { to: '/assignments', icon: LinkIcon,    label: 'Assignments' },
-    { to: '/ngo',         icon: PlusIcon,    label: 'NGO Portal' },
-    { to: '/admin',       icon: ShieldIcon,  label: 'Admin Panel' },
+    { to: '/dashboard',   icon: GridIcon,   label: 'Dashboard' },
+    { to: '/requests',    icon: ListIcon,   label: 'Requests' },
+    { to: '/map',         icon: MapIcon,    label: 'Need Map' },
+    { to: '/assignments', icon: LinkIcon,   label: 'Assignments' },
+    { to: '/ngo',         icon: PlusIcon,   label: 'NGO Portal' },
+    { to: '/admin',       icon: ShieldIcon, label: 'Admin Panel' },
   ],
   NGO: [
-    { to: '/dashboard', icon: GridIcon,  label: 'Dashboard' },
-    { to: '/requests',  icon: ListIcon,  label: 'Requests' },
-    { to: '/ngo',       icon: PlusIcon,  label: 'NGO Portal' },
+    { to: '/dashboard', icon: GridIcon, label: 'Dashboard' },
+    { to: '/requests',  icon: ListIcon, label: 'Requests' },
+    { to: '/map',       icon: MapIcon,  label: 'Need Map' },
+    { to: '/ngo',       icon: PlusIcon, label: 'NGO Portal' },
   ],
   Volunteer: [
     { to: '/dashboard', icon: GridIcon,  label: 'Dashboard' },
     { to: '/requests',  icon: ListIcon,  label: 'Requests' },
+    { to: '/map',       icon: MapIcon,   label: 'Need Map' },
     { to: '/volunteer', icon: UserIcon,  label: 'My Tasks' },
   ],
 };
@@ -58,7 +61,8 @@ export default function Sidebar() {
             </svg>
           </div>
         )}
-        <button onClick={() => setCollapsed(c => !c)} className={`text-white/30 hover:text-white/70 transition ${collapsed ? 'hidden' : ''}`}>
+        <button onClick={() => setCollapsed(c => !c)}
+          className={`text-white/30 hover:text-white/70 transition ${collapsed ? 'hidden' : ''}`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -67,11 +71,13 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-4 flex flex-col gap-0.5 overflow-y-auto">
-        {!collapsed && <p className="text-white/20 text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">Navigation</p>}
+        {!collapsed && (
+          <p className="text-white/20 text-[10px] font-semibold uppercase tracking-widest px-3 mb-2">Navigation</p>
+        )}
         {links.map(({ to, icon: Icon, label }) => (
           <NavLink key={to} to={to}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
               ${isActive
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                 : 'text-white/50 hover:text-white hover:bg-white/5'}`
@@ -79,6 +85,12 @@ export default function Sidebar() {
           >
             <Icon className="w-4 h-4 shrink-0" />
             {!collapsed && <span>{label}</span>}
+            {/* Map badge */}
+            {!collapsed && to === '/map' && (
+              <span className="ml-auto text-[9px] font-bold bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                LIVE
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -110,24 +122,11 @@ export default function Sidebar() {
   );
 }
 
-function GridIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>;
-}
-function ListIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-function LinkIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-function PlusIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-function ShieldIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-function UserIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-function LogoutIcon({ className }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
+function GridIcon({ className })  { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>; }
+function ListIcon({ className })  { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function MapIcon({ className })   { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function LinkIcon({ className })  { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function PlusIcon({ className })  { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function ShieldIcon({ className }){ return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function UserIcon({ className })  { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function LogoutIcon({ className }){ return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round"/></svg>; }

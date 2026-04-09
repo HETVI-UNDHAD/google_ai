@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import LocationSelector from '../components/LocationSelector';
 
 const TABS = ['Submit Request', 'My Requests'];
 const INPUT  = 'w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent bg-gray-50 focus:bg-white transition';
@@ -23,7 +24,8 @@ export default function NgoDashboard() {
   const fileRef                     = useRef();
 
   const [form, setForm] = useState({
-    title: '', description: '', category: 'Food', city: '', area: '',
+    title: '', description: '', category: 'Food',
+    location: { state: '', district: '', city: '', area: '' },
     urgency: '1', peopleAffected: '', image: null,
   });
 
@@ -42,11 +44,16 @@ export default function NgoDashboard() {
     setLoading(true); setMsg({ type: '', text: '' });
     try {
       const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => { if (k !== 'image' && v !== '') fd.append(k, v); });
+      Object.entries(form).forEach(([k, v]) => {
+        if (k === 'image' || k === 'location') return;
+        if (v !== '') fd.append(k, v);
+      });
+      fd.append('city', form.location.city);
+      fd.append('area', form.location.area);
       if (form.image) fd.append('image', form.image);
       await api.post('/requests', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setMsg({ type: 'success', text: 'Request submitted successfully!' });
-      setForm({ title: '', description: '', category: 'Food', city: '', area: '', urgency: '1', peopleAffected: '', image: null });
+      setForm({ title: '', description: '', category: 'Food', location: { state: '', district: '', city: '', area: '' }, urgency: '1', peopleAffected: '', image: null });
       if (fileRef.current) fileRef.current.value = '';
       fetchMyRequests();
     } catch (err) {
@@ -115,13 +122,11 @@ export default function NgoDashboard() {
                 <option value="3">High — Immediate action</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">City <span className="text-rose-500">*</span></label>
-              <input name="city" placeholder="e.g. Ahmedabad" value={form.city} onChange={handleChange} required className={INPUT} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Area <span className="text-rose-500">*</span></label>
-              <input name="area" placeholder="e.g. Bapunagar" value={form.area} onChange={handleChange} required className={INPUT} />
+            <div className="sm:col-span-2">
+              <LocationSelector
+                value={form.location}
+                onChange={loc => setForm(f => ({ ...f, location: loc }))}
+              />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-600 mb-1.5 block">People Affected <span className="text-rose-500">*</span></label>
@@ -136,7 +141,14 @@ export default function NgoDashboard() {
             {/* Priority preview */}
             {form.urgency && form.peopleAffected && (
               <div className="sm:col-span-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex items-center justify-between">
-                <span className="text-xs text-indigo-600 font-medium">Estimated Priority Score</span>
+                <div>
+                  <span className="text-xs text-indigo-600 font-medium">Estimated Priority Score</span>
+                  {form.location.city && (
+                    <p className="text-[11px] text-indigo-400 mt-0.5">
+                      📍 {form.location.city}, {form.location.area || '—'}
+                    </p>
+                  )}
+                </div>
                 <span className="text-lg font-bold text-indigo-700">
                   {(Number(form.urgency) * 3) + (Number(form.peopleAffected) * 2)}
                 </span>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import LocationSelector from '../components/LocationSelector';
 
 const SKILLS = ['General', 'Logistics', 'Medical', 'Teaching'];
 const SLOTS  = ['Morning', 'Afternoon', 'Evening'];
@@ -22,7 +23,7 @@ export default function VolunteerPage() {
   const { user } = useAuth();
   const [assignments, setAssignments] = useState([]);
   const [profile,     setProfile]     = useState(null);
-  const [form, setForm] = useState({ skills: [], availableSlots: [], availability: true, city: '' });
+  const [form, setForm] = useState({ skills: [], availableSlots: [], availability: true, location: { state: '', district: '', city: '', area: '' } });
   const [regMsg,     setRegMsg]     = useState('');
   const [loading,    setLoading]    = useState(false);
   const [responding, setResponding] = useState(null);
@@ -46,11 +47,11 @@ export default function VolunteerPage() {
 
   const handleRegister = async e => {
     e.preventDefault();
-    if (!form.skills.length) return setRegMsg('Please select at least one skill.');
-    if (!form.city.trim())   return setRegMsg('Please enter your city.');
+    if (!form.skills.length)        return setRegMsg('Please select at least one skill.');
+    if (!form.location.city.trim()) return setRegMsg('Please select your city.');
     setLoading(true);
     try {
-      await api.post('/volunteer', { userId: user._id, ...form });
+      await api.post('/volunteer', { userId: user._id, ...form, city: form.location.city });
       setRegMsg('');
       fetchData();
     } catch (err) {
@@ -216,9 +217,11 @@ export default function VolunteerPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Your City <span className="text-rose-500">*</span></label>
-                  <input placeholder="e.g. Ahmedabad" value={form.city} required
-                    onChange={e => setForm({ ...form, city: e.target.value })} className={INPUT} />
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Location <span className="text-rose-500">*</span></p>
+                  <LocationSelector
+                    value={form.location}
+                    onChange={loc => setForm(f => ({ ...f, location: loc }))}
+                  />
                 </div>
 
                 <label className="flex items-center gap-2.5 cursor-pointer">

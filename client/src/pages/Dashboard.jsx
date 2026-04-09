@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import NeedMap from '../components/NeedMap';
 
 const CATEGORY_COLOR = { Food: '#f97316', Health: '#ef4444', Education: '#3b82f6', Shelter: '#10b981' };
 const URGENCY_LABEL  = { 1: 'Low', 2: 'Medium', 3: 'High' };
@@ -201,6 +202,20 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Mini Map */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Need Areas Map</p>
+            <p className="text-xs text-gray-400 mt-0.5">Geographic distribution of active requests</p>
+          </div>
+          <Link to="/map" className="text-xs text-indigo-600 font-semibold hover:underline">Full map →</Link>
+        </div>
+        <div className="h-64">
+          {!loading && <NeedMap requests={requests} />}
         </div>
       </div>
 

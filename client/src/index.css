@@ -1,1 +1,46 @@
 @import "tailwindcss";
+
+/* ── Leaflet fixes ── */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+  border-radius: inherit;
+}
+
+/* Keep leaflet controls above map but below sidebar */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 800 !important;
+}
+
+.leaflet-pane {
+  z-index: 400 !important;
+}
+
+/* Popup styling */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12) !important;
+  border: 1px solid #f1f5f9 !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 14px 16px !important;
+  min-width: 220px;
+}
+
+.leaflet-popup-tip {
+  background: white !important;
+}
+
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  font-size: 18px !important;
+  padding: 6px 8px !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #334155 !important;
+}

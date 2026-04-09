@@ -9,6 +9,7 @@ import VolunteerPage   from './pages/VolunteerPage';
 import AssignmentsPage from './pages/AssignmentsPage';
 import NgoDashboard    from './pages/NgoDashboard';
 import AdminDashboard  from './pages/AdminDashboard';
+import MapPage         from './pages/MapPage';
 import { useAuth } from './context/AuthContext';
 
 function AppLayout() {
@@ -19,13 +20,14 @@ function AppLayout() {
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/requests"  element={<ProtectedRoute><RequestsPage /></ProtectedRoute>} />
-          <Route path="/volunteer" element={<ProtectedRoute roles={['Volunteer']}><VolunteerPage /></ProtectedRoute>} />
+          <Route path="/"            element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/requests"    element={<ProtectedRoute><RequestsPage /></ProtectedRoute>} />
+          <Route path="/map"         element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+          <Route path="/volunteer"   element={<ProtectedRoute roles={['Volunteer']}><VolunteerPage /></ProtectedRoute>} />
           <Route path="/assignments" element={<ProtectedRoute roles={['Admin']}><AssignmentsPage /></ProtectedRoute>} />
-          <Route path="/ngo"   element={<ProtectedRoute roles={['NGO','Admin']}><NgoDashboard /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute roles={['Admin']}><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/ngo"         element={<ProtectedRoute roles={['NGO','Admin']}><NgoDashboard /></ProtectedRoute>} />
+          <Route path="/admin"       element={<ProtectedRoute roles={['Admin']}><AdminDashboard /></ProtectedRoute>} />
         </Routes>
       </main>
     </div>
@@ -38,7 +40,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/*" element={<AppLayout />} />
+          <Route path="/*"     element={<AppLayout />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
