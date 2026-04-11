@@ -6,6 +6,9 @@ const { protect, authorizeRoles } = require('../middleware/authMiddleware');
 router.post('/volunteer',                  protect, authorizeRoles('Volunteer'),        ctrl.registerVolunteer);
 router.get('/volunteers',                  protect, authorizeRoles('Admin'),            ctrl.getVolunteers);
 router.get('/volunteer/me',                protect, authorizeRoles('Volunteer'),        ctrl.getMyProfile);
+router.patch('/volunteer/location',        protect, authorizeRoles('Volunteer'),        ctrl.updateLocation);
+router.patch('/volunteer/profile',         protect, authorizeRoles('Volunteer'),        ctrl.updateProfile);
+router.patch('/volunteer/availability',    protect, authorizeRoles('Volunteer'),        ctrl.toggleAvailability);
 
 router.get('/match/preview',               protect, authorizeRoles('Admin'),            ctrl.previewMatching);
 router.post('/assign',                     protect, authorizeRoles('Admin'),            ctrl.runMatching);

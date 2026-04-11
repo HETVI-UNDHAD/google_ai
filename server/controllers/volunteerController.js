@@ -46,9 +46,11 @@ function matchScore(volunteer, request, activeAssignmentCount) {
     return null; // hard requirement — no skill match = no assignment
   }
 
-  // Location score
+  // Location score — prefer live GPS over static registration coords
   const sameCity = volunteer.city.toLowerCase() === request.city.toLowerCase();
-  const dist     = distanceKm(volunteer.latitude, volunteer.longitude, request.latitude, request.longitude);
+  const vLat = volunteer.liveLocation?.latitude  || volunteer.latitude;
+  const vLng = volunteer.liveLocation?.longitude || volunteer.longitude;
+  const dist  = distanceKm(vLat, vLng, request.latitude, request.longitude);
 
   if (sameCity) {
     score += 30;
@@ -213,6 +215,106 @@ exports.manualAssign = async (req, res) => {
   }
 };
 
+// ── PATCH /api/volunteer/profile ─────────────────────────────────────────
+// Edit name, phone, skills, city, availableSlots
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, phone, skills, city, availableSlots, latitude, longitude } = req.body;
+
+    // Update name/phone on User model
+    if (name || phone) {
+      const userUpdate = {};
+      if (name)  userUpdate.name  = name.trim();
+      if (phone) userUpdate.phone = phone.trim();
+      await require('../models/User').findByIdAndUpdate(req.user._id, userUpdate);
+    }
+
+    // Build volunteer update
+    const volUpdate = {};
+    if (skills)         volUpdate.skills         = skills;
+    if (city)           volUpdate.city           = city;
+    if (availableSlots) volUpdate.availableSlots = availableSlots;
+
+    // If online and new coords provided, update live location too
+    if (latitude != null && longitude != null) {
+      volUpdate.liveLocation = { latitude: parseFloat(latitude), longitude: parseFloat(longitude), updatedAt: new Date() };
+    }
+
+    const volunteer = await Volunteer.findOneAndUpdate(
+      { userId: req.user._id },
+      volUpdate,
+      { new: true }
+    ).populate('userId', 'name email');
+
+    if (!volunteer) return res.status(404).json({ message: 'Volunteer profile not found' });
+    res.json(volunteer);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/volunteer/availability ─────────────────────────────────────
+// Toggle availability ON/OFF. When ON: save location + return nearby requests.
+exports.toggleAvailability = async (req, res) => {
+  try {
+    const { availability, latitude, longitude } = req.body;
+
+    const volUpdate = { availability };
+
+    // When going ONLINE, save live location if provided
+    if (availability && latitude != null && longitude != null) {
+      volUpdate.liveLocation = {
+        latitude:  parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        updatedAt: new Date(),
+      };
+    }
+
+    const volunteer = await Volunteer.findOneAndUpdate(
+      { userId: req.user._id },
+      volUpdate,
+      { new: true }
+    );
+
+    if (!volunteer) return res.status(404).json({ message: 'Volunteer profile not found' });
+
+    // When going ONLINE — find nearby pending requests matching skills
+    let nearbyRequests = [];
+    if (availability) {
+      const required = SKILL_MAP;
+      const matchedCategories = Object.entries(required)
+        .filter(([, skills]) => skills.some(s => volunteer.skills.includes(s)))
+        .map(([cat]) => cat);
+
+      const pending = await Request.find({
+        status: 'Pending',
+        category: { $in: matchedCategories },
+      }).sort({ priorityScore: -1 }).limit(5);
+
+      const vLat = volunteer.liveLocation?.latitude  || volunteer.latitude;
+      const vLng = volunteer.liveLocation?.longitude || volunteer.longitude;
+
+      nearbyRequests = pending
+        .map(r => {
+          const dist = distanceKm(vLat, vLng, r.latitude, r.longitude);
+          return { ...r.toObject(), distance: dist };
+        })
+        .filter(r => {
+          // same city OR within 100km OR distance unknown (city-only match)
+          if (r.city.toLowerCase() === volunteer.city.toLowerCase()) return true;
+          if (r.distance !== null && r.distance <= 100) return true;
+          return false;
+        })
+        .sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999))
+        .slice(0, 3);
+    }
+
+    res.json({ availability: volunteer.availability, liveLocation: volunteer.liveLocation, nearbyRequests });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── POST /api/volunteer ────────────────────────────────────────────────────
 exports.registerVolunteer = async (req, res) => {
   try {
@@ -239,8 +341,41 @@ exports.getVolunteers = async (req, res) => {
 // ── GET /api/volunteer/me ──────────────────────────────────────────────────
 exports.getMyProfile = async (req, res) => {
   try {
-    const volunteer = await Volunteer.findOne({ userId: req.user._id });
+    const volunteer = await Volunteer.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
     res.json(volunteer);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/volunteer/location ─────────────────────────────────────────
+// Volunteer sends their current GPS coordinates — always overwrites previous
+exports.updateLocation = async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+
+    if (latitude == null || longitude == null)
+      return res.status(400).json({ message: 'latitude and longitude are required' });
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180)
+      return res.status(400).json({ message: 'Invalid coordinates' });
+
+    const volunteer = await Volunteer.findOneAndUpdate(
+      { userId: req.user._id },
+      { liveLocation: { latitude: lat, longitude: lng, updatedAt: new Date() } },
+      { new: true }
+    );
+
+    if (!volunteer)
+      return res.status(404).json({ message: 'Volunteer profile not found. Please register first.' });
+
+    res.json({
+      message: 'Location updated',
+      liveLocation: volunteer.liveLocation,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -28,6 +28,7 @@ export default function VolunteerPage() {
   const [loading,    setLoading]    = useState(false);
   const [responding, setResponding] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const [locStatus,  setLocStatus]  = useState(null); // null | 'fetching' | 'saved' | 'denied' | 'error'
 
   const fetchData = () => {
     Promise.all([
@@ -41,6 +42,27 @@ export default function VolunteerPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Auto-capture GPS when volunteer opens the page
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    setLocStatus('fetching');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await api.patch('/volunteer/location', {
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
+          setLocStatus('saved');
+        } catch {
+          setLocStatus('error');
+        }
+      },
+      () => setLocStatus('denied'),
+      { timeout: 8000, maximumAge: 60000 }
+    );
+  }, []);
 
   const toggle = (key, val) =>
     setForm(f => ({ ...f, [key]: f[key].includes(val) ? f[key].filter(x => x !== val) : [...f[key], val] }));
@@ -75,6 +97,21 @@ export default function VolunteerPage() {
         <h1 className="text-xl font-bold text-gray-900">Volunteer Dashboard</h1>
         <p className="text-sm text-gray-400 mt-0.5">Manage your assignments and profile</p>
       </div>
+
+      {/* Live location status banner */}
+      {locStatus && (
+        <div className={`mb-4 flex items-center gap-3 px-4 py-3 rounded-xl border text-sm ${
+          locStatus === 'fetching' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+          locStatus === 'saved'    ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+          locStatus === 'denied'   ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                     'bg-rose-50 border-rose-200 text-rose-600'
+        }`}>
+          {locStatus === 'fetching' && <><span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" /> Detecting your location...</>}
+          {locStatus === 'saved'    && <><span className="text-base">📍</span> Your live location has been saved. The system will use it to find nearby requests.</>}
+          {locStatus === 'denied'   && <><span className="text-base">⚠️</span> Location access denied. Enable it in browser settings for better task matching.</>}
+          {locStatus === 'error'    && <><span className="text-base">❌</span> Could not save location. You may not have a volunteer profile yet.</>}
+        </div>
+      )}
 
       {dataLoading ? (
         <div className="flex items-center justify-center h-48">
