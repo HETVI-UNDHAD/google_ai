@@ -46,10 +46,12 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('MongoDB connected');
-    // Seeds only run if collections are empty (guarded inside each seed)
-    await seedAdmin();
-    await seedRequests();
-    await seedVolunteers();
+    // Seeds only run on first deploy — set RUN_SEEDS=true in env to trigger
+    if (process.env.RUN_SEEDS === 'true') {
+      await seedAdmin();
+      await seedRequests();
+      await seedVolunteers();
+    }
 
     // ── Hourly priority score refresh for pending requests ─────────────────
     const Request = require('./models/Request');
