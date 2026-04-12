@@ -50,8 +50,9 @@ export default function VolunteerPage() {
   const [editLoad,  setEditLoad]  = useState(false);
 
   // availability toggle
-  const [toggling, setToggling] = useState(false);
-  const [availMsg, setAvailMsg] = useState('');
+  const [toggling,   setToggling]  = useState(false);
+  const [availMsg,   setAvailMsg]  = useState('');
+  const [locStatus,  setLocStatus] = useState('');
 
   const fetchData = useCallback(() => {
     Promise.all([

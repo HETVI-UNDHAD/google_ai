@@ -84,7 +84,7 @@ export default function Dashboard() {
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
-    api.get('/requests/sorted').then(({ data }) => { setRequests(data); setLoading(false); }).catch(() => setLoading(false));
+    api.get('/requests/sorted').then(({ data }) => { setRequests(Array.isArray(data) ? data : data.data ?? []); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
   const stats = {

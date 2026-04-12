@@ -26,6 +26,7 @@ router.post('/volunteer/reject',              protect, authorizeRoles('Volunteer
 router.post('/volunteer/complete',            protect, authorizeRoles('Volunteer'), ctrl.completeTask);
 
 // Admin — volunteer list
+router.get('/volunteers/online',               protect, authorizeRoles('Admin'),     ctrl.getOnlineVolunteers);
 router.get('/volunteers',                     protect, authorizeRoles('Admin'),     ctrl.getVolunteers);
 
 // Matching

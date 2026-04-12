@@ -152,6 +152,9 @@ export default function RequestsPage() {
   const [loading,   setLoading]   = useState(true);
   const [userGPS,   setUserGPS]   = useState(null);
   const [gpsStatus, setGpsStatus] = useState('idle');
+  const [page,      setPage]      = useState(1);
+  const [totalPages,setTotalPages]= useState(1);
+  const [total,     setTotal]     = useState(0);
 
   // Get user GPS on mount (silent — don't block UI)
   useEffect(() => {
@@ -160,13 +163,25 @@ export default function RequestsPage() {
     });
   }, []);
 
-  const fetchRequests = useCallback(() => {
-    api.get('/requests/sorted')
-      .then(({ data }) => { setRequests(data); setLoading(false); })
+  const fetchRequests = useCallback((p = 1, append = false) => {
+    api.get(`/requests/sorted?page=${p}&limit=20`)
+      .then(({ data }) => {
+        const rows = data.data || data;
+        setRequests(prev => append ? [...prev, ...rows] : rows);
+        setTotalPages(data.pages || 1);
+        setTotal(data.total || rows.length);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchRequests(); }, [fetchRequests]);
+  useEffect(() => { fetchRequests(1); }, [fetchRequests]);
+
+  const loadMore = () => {
+    const next = page + 1;
+    setPage(next);
+    fetchRequests(next, true);
+  };
 
   // Apply filters + sort
   useEffect(() => {
@@ -317,6 +332,14 @@ export default function RequestsPage() {
           {filtered.map(r => (
             <RequestCard key={r._id} request={r} canEdit={canEdit} onStatusChange={handleStatusChange} />
           ))}
+        </div>
+      )}
+      {page < totalPages && sortMode === 'priority' && (
+        <div className="mt-6 text-center">
+          <button onClick={loadMore}
+            className="text-sm text-indigo-600 font-semibold border border-indigo-200 px-6 py-2 rounded-xl hover:bg-indigo-50 transition">
+            Load more ({requests.length} / {total})
+          </button>
         </div>
       )}
     </div>

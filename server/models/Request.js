@@ -19,10 +19,25 @@ const requestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// priorityScore = (urgency × 3) + (peopleAffected × 2)
+// Priority formula:
+//   base     = urgency^2 * 10  (urgency 3 = 90, urgency 2 = 40, urgency 1 = 10)
+//   people   = log10(peopleAffected + 1) * 20  (diminishing returns on large numbers)
+//   agebonus = hours pending * 0.5, capped at 100  (older requests rise over time)
+// Total is recalculated on save AND via a scheduled refresh
+function calcPriority(urgency, peopleAffected, createdAt) {
+  const base      = Math.pow(urgency, 2) * 10;
+  const people    = Math.log10((peopleAffected || 1) + 1) * 20;
+  const hoursOld  = (Date.now() - new Date(createdAt || Date.now())) / 3600000;
+  const ageBonus  = Math.min(hoursOld * 0.5, 100);
+  return Math.round(base + people + ageBonus);
+}
+
 requestSchema.pre('save', function (next) {
-  this.priorityScore = (this.urgency * 3) + (this.peopleAffected * 2);
+  this.priorityScore = calcPriority(this.urgency, this.peopleAffected, this.createdAt);
   next();
 });
+
+// Export so the refresh job can reuse it
+requestSchema.statics.recalcPriority = calcPriority;
 
 module.exports = mongoose.model('Request', requestSchema);

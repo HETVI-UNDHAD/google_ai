@@ -330,11 +330,35 @@ exports.registerVolunteer = async (req, res) => {
   }
 };
 
+// GET /api/volunteers/online — returns online volunteers with location (admin only)
+exports.getOnlineVolunteers = async (req, res) => {
+  try {
+    const volunteers = await Volunteer.find({
+      availability: true,
+      currentLatitude:  { $ne: null },
+      currentLongitude: { $ne: null },
+    }).populate('userId', 'name');
+    res.json(volunteers.map(v => ({
+      _id:  v._id,
+      name: v.userId?.name || 'Volunteer',
+      city: v.city,
+      lat:  v.currentLatitude,
+      lng:  v.currentLongitude,
+      skills: v.skills,
+    })));
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 // ── GET /api/volunteers ────────────────────────────────────────────────────
 exports.getVolunteers = async (req, res) => {
   try {
-    const volunteers = await Volunteer.find().populate('userId', 'name email');
-    res.json(volunteers);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const [volunteers, total] = await Promise.all([
+      Volunteer.find().populate('userId', 'name email').sort({ createdAt: -1 }).skip((page-1)*limit).limit(limit),
+      Volunteer.countDocuments(),
+    ]);
+    res.json({ data: volunteers, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -386,11 +410,16 @@ exports.updateLocation = async (req, res) => {
 // ── GET /api/assignments ───────────────────────────────────────────────────
 exports.getAssignments = async (req, res) => {
   try {
-    const assignments = await Assignment.find()
-      .populate('requestId', 'title category city area status priorityScore urgency peopleAffected')
-      .populate({ path: 'volunteerId', populate: { path: 'userId', select: 'name email' } })
-      .sort({ createdAt: -1 });
-    res.json(assignments);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const [assignments, total] = await Promise.all([
+      Assignment.find()
+        .populate('requestId', 'title category city area status priorityScore urgency peopleAffected')
+        .populate({ path: 'volunteerId', populate: { path: 'userId', select: 'name email' } })
+        .sort({ createdAt: -1 }).skip((page-1)*limit).limit(limit),
+      Assignment.countDocuments(),
+    ]);
+    res.json({ data: assignments, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -488,25 +517,42 @@ exports.respondToAssignment = async (req, res) => {
     const { status, notes } = req.body;
     if (!['Accepted', 'Rejected', 'Completed'].includes(status))
       return res.status(400).json({ message: 'Invalid status' });
-
     const assignment = await Assignment.findByIdAndUpdate(
       req.params.id,
       { status, notes: notes || '' },
       { new: true }
-    ).populate('requestId', 'title status');
-
+    ).populate('requestId', 'title status _id category city');
     if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
-
-    if (status === 'Rejected')  await Request.findByIdAndUpdate(assignment.requestId._id, { status: 'Pending' });
     if (status === 'Completed') await Request.findByIdAndUpdate(assignment.requestId._id, { status: 'Resolved' });
-
+    if (status === 'Rejected') {
+      await Request.findByIdAndUpdate(assignment.requestId._id, { status: 'Pending' });
+      autoReassign(assignment.requestId._id, assignment.volunteerId).catch(() => {});
+    }
     res.json(assignment);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// PATCH /api/volunteer/profile
+async function autoReassign(requestId) {
+  const request = await Request.findById(requestId);
+  if (!request || request.status !== 'Pending') return;
+  const alreadyRejected = await Assignment.distinct('volunteerId', { requestId, status: 'Rejected' });
+  const excluded = new Set(alreadyRejected.map(id => id.toString()));
+  const volunteers = await Volunteer.find({ availability: true });
+  const active = await Assignment.find({ status: { $in: ['Assigned', 'Accepted'] } });
+  const wmap = {};
+  active.forEach(a => { wmap[a.volunteerId.toString()] = (wmap[a.volunteerId.toString()] || 0) + 1; });
+  const candidates = volunteers
+    .filter(v => !excluded.has(v._id.toString()))
+    .map(v => ({ v, r: matchScore(v, request, wmap[v._id.toString()] || 0) }))
+    .filter(x => x.r !== null)
+    .sort((a, b) => b.r.score - a.r.score);
+  if (!candidates.length) return;
+  const best = candidates[0];
+  await Assignment.create({ requestId, volunteerId: best.v._id, notes: `Auto-reassigned. Score: ${best.r.score}/100.` });
+  await Request.findByIdAndUpdate(requestId, { status: 'In Progress' });
+  await Notification.create({ volunteerId: best.v._id, requestId, message: `Assigned: ${request.title} (${request.category} - ${request.city})`, read: false }).catch(() => {});
+}
+
 exports.updateProfile = async (req, res) => {
   try {
     const { name, phone, skills, city, area, availableSlots, latitude, longitude } = req.body;

@@ -50,21 +50,41 @@ export default function AdminDashboard() {
   const [requests, setRequests]     = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [userPage, setUserPage]     = useState(1);
+  const [volPage,  setVolPage]      = useState(1);
+  const [userMeta, setUserMeta]     = useState({ total: 0, pages: 1 });
+  const [volMeta,  setVolMeta]      = useState({ total: 0, pages: 1 });
 
   useEffect(() => {
     Promise.all([
-      api.get('/users'),
-      api.get('/volunteers'),
-      api.get('/requests'),
-      api.get('/assignments'),
+      api.get('/users?limit=20&page=1'),
+      api.get('/volunteers?limit=20&page=1'),
+      api.get('/requests?limit=100'),       // overview only needs counts
+      api.get('/assignments?limit=100'),
     ]).then(([u, v, r, a]) => {
-      setUsers(u.data);
-      setVolunteers(v.data);
-      setRequests(r.data);
-      setAssignments(a.data);
+      setUsers(u.data.data);        setUserMeta({ total: u.data.total, pages: u.data.pages });
+      setVolunteers(v.data.data);   setVolMeta({ total: v.data.total, pages: v.data.pages });
+      setRequests(r.data.data || r.data);
+      setAssignments(a.data.data || a.data);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const loadMoreUsers = () => {
+    const next = userPage + 1;
+    api.get(`/users?limit=20&page=${next}`).then(r => {
+      setUsers(u => [...u, ...r.data.data]);
+      setUserPage(next);
+    });
+  };
+
+  const loadMoreVols = () => {
+    const next = volPage + 1;
+    api.get(`/volunteers?limit=20&page=${next}`).then(r => {
+      setVolunteers(v => [...v, ...r.data.data]);
+      setVolPage(next);
+    });
+  };
 
   const stats = {
     total:       requests.length,
@@ -180,7 +200,7 @@ export default function AdminDashboard() {
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">Registered Users</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{users.length} accounts in the system</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{userMeta.total} accounts in the system</p>
                 </div>
                 <div className="flex gap-2">
                   {['Admin','NGO','Volunteer'].map(r => (
@@ -223,16 +243,22 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+              {userPage < userMeta.pages && (
+                <div className="px-5 py-3 border-t border-gray-100">
+                  <button onClick={loadMoreUsers} className="text-xs text-indigo-600 font-semibold hover:underline">
+                    Load more ({users.length} / {userMeta.total})
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── Tab 2: Volunteers ── */}
           {tab === 2 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">Registered Volunteers</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{volunteers.length} volunteers · {volunteers.filter(v=>v.availability).length} available</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{volMeta.total} volunteers · {volunteers.filter(v=>v.availability).length} available</p>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -280,6 +306,13 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+              {volPage < volMeta.pages && (
+                <div className="px-5 py-3 border-t border-gray-100">
+                  <button onClick={loadMoreVols} className="text-xs text-indigo-600 font-semibold hover:underline">
+                    Load more ({volunteers.length} / {volMeta.total})
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>

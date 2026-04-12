@@ -35,7 +35,7 @@ export default function AssignmentsPage() {
   const [filter,   setFilter]   = useState('All');
 
   const fetchAssignments = () => {
-    api.get('/assignments').then(({ data }) => { setAssignments(data); setLoading(false); }).catch(() => setLoading(false));
+    api.get('/assignments').then(({ data }) => { setAssignments(Array.isArray(data) ? data : data.data ?? []); setLoading(false); }).catch(() => setLoading(false));
   };
 
   useEffect(() => { fetchAssignments(); }, []);

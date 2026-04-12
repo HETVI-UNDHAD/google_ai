@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -19,6 +19,15 @@ const userPinIcon = L.divIcon({
   iconSize:   [18, 34],
   iconAnchor: [9, 34],
   popupAnchor:[0, -36],
+});
+
+// Volunteer online marker icon
+const volunteerIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:#10b981;border:2px solid #fff;box-shadow:0 0 0 3px rgba(16,185,129,0.3);"></div>`,
+  iconSize:   [14, 14],
+  iconAnchor: [7, 7],
+  popupAnchor:[0, -10],
 });
 
 const CITY_COORDS = {
@@ -77,7 +86,14 @@ function FitBounds({ positions }) {
   return null;
 }
 
-export default function NeedMap({ requests, userLocation }) {
+export default function NeedMap({ requests, userLocation, onlineVolunteers = [] }) {
+  // Group requests by city — show cluster bubble if >1 in same city
+  const cityGroups = {};
+  requests.filter(r => CITY_COORDS[r.city]).forEach(r => {
+    if (!cityGroups[r.city]) cityGroups[r.city] = [];
+    cityGroups[r.city].push(r);
+  });
+
   const cityIndex = {};
   const positioned = requests
     .filter(r => CITY_COORDS[r.city])
@@ -122,6 +138,42 @@ export default function NeedMap({ requests, userLocation }) {
             </Popup>
           </Marker>
         )}
+
+        {/* Online volunteer markers */}
+        {onlineVolunteers.map(v => (
+          <Marker key={v._id} position={[v.lat, v.lng]} icon={volunteerIcon}>
+            <Popup minWidth={160}>
+              <div style={{ fontFamily: "'Inter',system-ui,sans-serif", padding: '4px 2px' }}>
+                <p style={{ fontWeight:700, color:'#10b981', fontSize:'12px', marginBottom:'3px' }}>🙋 {v.name}</p>
+                <p style={{ color:'#64748b', fontSize:'11px', marginBottom:'2px' }}>{v.city}</p>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'3px', marginTop:'4px' }}>
+                  {v.skills.map(s => <span key={s} style={{ background:'#f0fdf4', color:'#065f46', padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:600 }}>{s}</span>)}
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* City cluster count badges */}
+        {Object.entries(cityGroups).filter(([,reqs]) => reqs.length > 2).map(([city, reqs]) => {
+          const coord = CITY_COORDS[city];
+          const clusterIcon = L.divIcon({
+            className: '',
+            html: `<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.85);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);">${reqs.length}</div>`,
+            iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-16],
+          });
+          return (
+            <Marker key={`cluster-${city}`} position={[coord[0]+0.06, coord[1]]} icon={clusterIcon}>
+              <Popup minWidth={160}>
+                <div style={{ fontFamily:"'Inter',system-ui,sans-serif", padding:'4px 2px' }}>
+                  <p style={{ fontWeight:700, color:'#6366f1', fontSize:'13px', marginBottom:'6px' }}>{city} — {reqs.length} requests</p>
+                  {reqs.slice(0,4).map(r => <p key={r._id} style={{ fontSize:'11px', color:'#475569', marginBottom:'2px' }}>• {r.title}</p>)}
+                  {reqs.length > 4 && <p style={{ fontSize:'10px', color:'#94a3b8' }}>+{reqs.length-4} more</p>}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
 
         {positioned.map((r, i) => {
           const color   = CATEGORY_COLOR[r.category] || '#6366f1';
@@ -248,9 +300,17 @@ export default function NeedMap({ requests, userLocation }) {
 
       {/* ── Total marker count bottom-right ── */}
       <div style={{ position: 'absolute', bottom: 20, right: 16, zIndex: 1000 }}
-        className="bg-indigo-600 text-white rounded-xl shadow-lg px-3 py-2 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-white/60 animate-pulse" />
-        <span className="text-xs font-bold">{positioned.length} locations plotted</span>
+        className="bg-indigo-600 text-white rounded-xl shadow-lg px-3 py-2 flex items-center gap-3">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-white/60 animate-pulse" />
+          <span className="text-xs font-bold">{positioned.length} requests</span>
+        </span>
+        {onlineVolunteers.length > 0 && (
+          <span className="flex items-center gap-1.5 border-l border-white/30 pl-3">
+            <span className="w-2 h-2 rounded-full bg-emerald-300" />
+            <span className="text-xs font-bold">{onlineVolunteers.length} online</span>
+          </span>
+        )}
       </div>
     </div>
   );

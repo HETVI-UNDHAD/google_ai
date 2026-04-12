@@ -7,10 +7,13 @@ exports.getAllRequests = async (req, res) => {
     const filter = {};
     if (req.query.status)   filter.status   = req.query.status;
     if (req.query.category) filter.category = req.query.category;
-    const requests = await Request.find(filter)
-      .populate('submittedBy', 'name email')
-      .sort({ createdAt: -1 });
-    res.json(requests);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const [requests, total] = await Promise.all([
+      Request.find(filter).populate('submittedBy', 'name email').sort({ createdAt: -1 }).skip((page-1)*limit).limit(limit),
+      Request.countDocuments(filter),
+    ]);
+    res.json({ data: requests, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -19,10 +22,13 @@ exports.getAllRequests = async (req, res) => {
 // GET /api/requests/sorted
 exports.getSortedRequests = async (req, res) => {
   try {
-    const requests = await Request.find()
-      .populate('submittedBy', 'name email')
-      .sort({ priorityScore: -1 });
-    res.json(requests);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const [requests, total] = await Promise.all([
+      Request.find().populate('submittedBy', 'name email').sort({ priorityScore: -1 }).skip((page-1)*limit).limit(limit),
+      Request.countDocuments(),
+    ]);
+    res.json({ data: requests, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -26,6 +26,7 @@ export default function MapPage() {
   const [urgency,  setUrgency]  = useState('All');
   const [loading,  setLoading]  = useState(true);
   const [userGPS,  setUserGPS]  = useState(null);
+  const [onlineVols, setOnlineVols] = useState([]);
 
   useEffect(() => {
     getGPS().then(async coords => {
@@ -42,11 +43,13 @@ export default function MapPage() {
         setUserGPS({ ...coords, name: 'Your Location', display: `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` });
       }
     });
+    // fetch online volunteers for map (admin only, silently ignore if not admin)
+    api.get('/volunteers/online').then(r => setOnlineVols(r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     api.get('/requests/sorted')
-      .then(({ data }) => { setRequests(data); setLoading(false); })
+      .then(({ data }) => { setRequests(Array.isArray(data) ? data : data.data ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -138,7 +141,7 @@ export default function MapPage() {
               <p className="text-sm text-gray-400 font-medium">Loading map data...</p>
             </div>
           ) : (
-            <NeedMap requests={filtered} userLocation={userGPS} />
+            <NeedMap requests={filtered} userLocation={userGPS} onlineVolunteers={onlineVols} />
           )}
         </div>
 
