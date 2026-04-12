@@ -1,5 +1,4 @@
-const Volunteer    = require('../models/Volunteer');
-const Notification = require('../models/Notification');
+const supabase = require('../utils/supabase');
 
 function distanceKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
@@ -21,82 +20,62 @@ exports.updateLocation = async (req, res) => {
     if (!latitude || !longitude)
       return res.status(400).json({ message: 'latitude and longitude are required' });
 
-    const volunteer = await Volunteer.findOneAndUpdate(
-      { userId: req.user._id },
-      { currentLatitude: Number(latitude), currentLongitude: Number(longitude), lastLocationUpdate: new Date() },
-      { new: true }
-    );
+    const { data, error } = await supabase.from('volunteers')
+      .update({ current_latitude: Number(latitude), current_longitude: Number(longitude), last_location_update: new Date().toISOString() })
+      .eq('user_id', req.user._id).select().single();
 
-    if (!volunteer)
-      return res.status(404).json({ message: 'Volunteer profile not found. Please register first.' });
-
-    res.json({ message: 'Location updated', currentLatitude: volunteer.currentLatitude, currentLongitude: volunteer.currentLongitude });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+    if (error || !data) return res.status(404).json({ message: 'Volunteer profile not found' });
+    res.json({ message: 'Location updated', currentLatitude: data.current_latitude, currentLongitude: data.current_longitude });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
 // GET /api/volunteer/notifications
 exports.getMyNotifications = async (req, res) => {
   try {
-    const volunteer = await Volunteer.findOne({ userId: req.user._id });
-    if (!volunteer) return res.json([]);
+    const { data: vol } = await supabase.from('volunteers').select('id').eq('user_id', req.user._id).single();
+    if (!vol) return res.json([]);
 
-    const notifications = await Notification.find({ volunteerId: volunteer._id })
-      .populate('requestId', 'title category city area urgency priorityScore latitude longitude')
-      .sort({ createdAt: -1 })
-      .limit(20);
+    const { data, error } = await supabase.from('notifications')
+      .select('*, requests(id, title, category, city, area, urgency, priority_score, latitude, longitude)')
+      .eq('volunteer_id', vol.id).order('created_at', { ascending: false }).limit(20);
 
-    res.json(notifications);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+    if (error) return res.status(500).json({ message: error.message });
+    res.json(data);
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
 // PATCH /api/volunteer/notifications/read
 exports.markAllRead = async (req, res) => {
   try {
-    const volunteer = await Volunteer.findOne({ userId: req.user._id });
-    if (!volunteer) return res.json({ updated: 0 });
+    const { data: vol } = await supabase.from('volunteers').select('id').eq('user_id', req.user._id).single();
+    if (!vol) return res.json({ updated: 0 });
 
-    const result = await Notification.updateMany(
-      { volunteerId: volunteer._id, read: false },
-      { read: true }
-    );
-    res.json({ updated: result.modifiedCount });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+    const { data } = await supabase.from('notifications')
+      .update({ read: true }).eq('volunteer_id', vol.id).eq('read', false).select();
+    res.json({ updated: data?.length || 0 });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// Called by requestController after a new request is saved — fire and forget
+// Fire-and-forget proximity notifications
 exports.triggerProximityNotifications = async (request) => {
   try {
     if (!request.latitude || !request.longitude) return;
+    const { data: volunteers } = await supabase.from('volunteers').select('*')
+      .eq('availability', true).not('current_latitude', 'is', null);
 
-    const RADIUS_KM  = 5;
-    const volunteers = await Volunteer.find({
-      availability:    true,
-      currentLatitude:  { $ne: null },
-      currentLongitude: { $ne: null },
-    });
-
-    const nearby = volunteers.filter((v) =>
-      distanceKm(v.currentLatitude, v.currentLongitude, request.latitude, request.longitude) <= RADIUS_KM
+    const nearby = (volunteers || []).filter(v =>
+      distanceKm(v.current_latitude, v.current_longitude, request.latitude, request.longitude) <= 5
     );
-
     if (!nearby.length) return;
 
-    const docs = nearby.map((v) => ({
-      volunteerId: v._id,
-      requestId:   request._id,
-      message:     `🚨 Urgent need near your location: "${request.title}" (${request.category} · ${request.city})`,
-      distanceKm:  parseFloat(
-        distanceKm(v.currentLatitude, v.currentLongitude, request.latitude, request.longitude).toFixed(2)
-      ),
+    const docs = nearby.map(v => ({
+      volunteer_id: v.id,
+      request_id:   request.id || request._id,
+      message:      `🚨 Urgent need near you: "${request.title}" (${request.category} · ${request.city})`,
+      distance_km:  parseFloat(distanceKm(v.current_latitude, v.current_longitude, request.latitude, request.longitude).toFixed(2)),
       read: false,
     }));
 
-    await Notification.insertMany(docs, { ordered: false }).catch(() => {});
+    await supabase.from('notifications').upsert(docs, { onConflict: 'volunteer_id,request_id', ignoreDuplicates: true });
   } catch { /* non-critical */ }
 };

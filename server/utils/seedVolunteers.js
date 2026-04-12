@@ -1,30 +1,32 @@
-const User      = require('../models/User');
-const Volunteer = require('../models/Volunteer');
+const bcrypt   = require('bcryptjs');
+const supabase = require('../utils/supabase');
 
-const sampleVolunteers = [
-  { name: 'Ravi Patel',   email: 'ravi@sras.com',   password: 'Ravi@1234',   city: 'Ahmedabad', skills: ['Medical', 'General'],    latitude: 23.0300, longitude: 72.5800 },
-  { name: 'Priya Shah',   email: 'priya@sras.com',  password: 'Priya@1234',  city: 'Surat',     skills: ['Medical', 'Teaching'],   latitude: 21.1800, longitude: 72.8400 },
-  { name: 'Amit Kumar',   email: 'amit@sras.com',   password: 'Amit@1234',   city: 'Vadodara',  skills: ['Teaching', 'General'],   latitude: 22.3100, longitude: 73.1900 },
-  { name: 'Neha Joshi',   email: 'neha@sras.com',   password: 'Neha@1234',   city: 'Rajkot',    skills: ['Logistics', 'General'],  latitude: 22.3100, longitude: 70.8100 },
-  { name: 'Suresh Mehta', email: 'suresh@sras.com', password: 'Suresh@1234', city: 'Ahmedabad', skills: ['Logistics', 'General'],  latitude: 22.9800, longitude: 72.6500 },
+const volunteers = [
+  { name: 'Ravi Patel',   email: 'ravi@sras.com',   password: 'Ravi@1234',   city: 'Ahmedabad', skills: ['Medical', 'General'],   latitude: 23.03, longitude: 72.58 },
+  { name: 'Priya Shah',   email: 'priya@sras.com',  password: 'Priya@1234',  city: 'Surat',     skills: ['Medical', 'Teaching'],  latitude: 21.18, longitude: 72.84 },
+  { name: 'Amit Kumar',   email: 'amit@sras.com',   password: 'Amit@1234',   city: 'Vadodara',  skills: ['Teaching', 'General'],  latitude: 22.31, longitude: 73.19 },
+  { name: 'Neha Joshi',   email: 'neha@sras.com',   password: 'Neha@1234',   city: 'Rajkot',    skills: ['Logistics', 'General'], latitude: 22.31, longitude: 70.81 },
+  { name: 'Suresh Mehta', email: 'suresh@sras.com', password: 'Suresh@1234', city: 'Ahmedabad', skills: ['Logistics', 'General'], latitude: 22.98, longitude: 72.65 },
 ];
 
 const seedVolunteers = async () => {
-  const count = await Volunteer.countDocuments();
+  const { count } = await supabase.from('volunteers').select('*', { count: 'exact', head: true });
   if (count > 0) return;
 
-  for (const v of sampleVolunteers) {
-    let user = await User.findOne({ email: v.email });
+  for (const v of volunteers) {
+    let { data: user } = await supabase.from('users').select('id').eq('email', v.email).single();
     if (!user) {
-      user = await User.create({ name: v.name, email: v.email, password: v.password, role: 'Volunteer' });
+      const hashed = await bcrypt.hash(v.password, 10);
+      const { data } = await supabase.from('users').insert({ name: v.name, email: v.email, password: hashed, role: 'Volunteer', phone: '' }).select().single();
+      user = data;
     }
-    await Volunteer.create({
-      userId: user._id, skills: v.skills, availability: true,
-      availableSlots: ['Morning', 'Evening'],
+    await supabase.from('volunteers').insert({
+      user_id: user.id, skills: v.skills, availability: true,
+      available_slots: ['Morning', 'Evening'],
       city: v.city, latitude: v.latitude, longitude: v.longitude,
     });
   }
-  console.log('Sample volunteers seeded (5 records)');
+  console.log('Volunteers seeded (5 records)');
 };
 
 module.exports = seedVolunteers;
