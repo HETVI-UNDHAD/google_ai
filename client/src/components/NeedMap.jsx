@@ -1,6 +1,25 @@
 import { useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Marker, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+// Custom pin icon for user location
+const userPinIcon = L.divIcon({
+  className: '',
+  html: `
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div style="
+        width:18px;height:18px;border-radius:50% 50% 50% 0;
+        background:#6366f1;border:3px solid #fff;
+        box-shadow:0 2px 8px rgba(99,102,241,0.5);
+        transform:rotate(-45deg);
+      "></div>
+      <div style="width:2px;height:14px;background:#6366f1;margin-top:-1px;"></div>
+    </div>`,
+  iconSize:   [18, 34],
+  iconAnchor: [9, 34],
+  popupAnchor:[0, -36],
+});
 
 const CITY_COORDS = {
   Ahmedabad:  [23.0225, 72.5714],
@@ -58,7 +77,7 @@ function FitBounds({ positions }) {
   return null;
 }
 
-export default function NeedMap({ requests }) {
+export default function NeedMap({ requests, userLocation }) {
   const cityIndex = {};
   const positioned = requests
     .filter(r => CITY_COORDS[r.city])
@@ -68,7 +87,10 @@ export default function NeedMap({ requests }) {
       return { ...r, coords: jitter(CITY_COORDS[r.city], idx) };
     });
 
-  const allPositions = positioned.map(r => r.coords);
+  const allPositions = [
+    ...positioned.map(r => r.coords),
+    ...(userLocation ? [[userLocation.lat, userLocation.lng]] : []),
+  ];
 
   return (
     <div className="relative w-full h-full">
@@ -86,6 +108,20 @@ export default function NeedMap({ requests }) {
         />
 
         {allPositions.length > 0 && <FitBounds positions={allPositions} />}
+
+        {/* User location pin */}
+        {userLocation && (
+          <Marker position={[userLocation.lat, userLocation.lng]} icon={userPinIcon}>
+            <Popup minWidth={200}>
+              <div style={{ fontFamily: "'Inter', system-ui, sans-serif", padding: '4px 2px' }}>
+                <p style={{ fontWeight: 700, color: '#6366f1', fontSize: '13px', marginBottom: '4px' }}>📍 You are here</p>
+                <p style={{ color: '#0f172a', fontSize: '12px', fontWeight: 600, marginBottom: '3px' }}>{userLocation.name}</p>
+                {userLocation.city && <p style={{ color: '#64748b', fontSize: '11px', marginBottom: '2px' }}>{[userLocation.city, userLocation.state].filter(Boolean).join(', ')}</p>}
+                <p style={{ color: '#94a3b8', fontSize: '10px' }}>{userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}</p>
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
         {positioned.map((r, i) => {
           const color   = CATEGORY_COLOR[r.category] || '#6366f1';
@@ -163,6 +199,16 @@ export default function NeedMap({ requests }) {
             </div>
           ))}
         </div>
+
+        {userLocation && (
+          <div className="border-t border-gray-100 mt-3 pt-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span style={{ width:12, height:12, borderRadius:'50% 50% 50% 0', background:'#6366f1', border:'2px solid #fff', boxShadow:'0 1px 4px rgba(99,102,241,0.4)', transform:'rotate(-45deg)', display:'inline-block', flexShrink:0 }} />
+              <span className="text-xs font-semibold text-indigo-600">Your Location</span>
+            </div>
+            <p className="text-[10px] text-gray-400 leading-snug pl-4">{userLocation.display}</p>
+          </div>
+        )}
 
         <div className="border-t border-gray-100 mt-3 pt-3">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Urgency</p>

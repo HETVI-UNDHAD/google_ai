@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import LocationSelector from '../components/LocationSelector';
@@ -13,23 +13,47 @@ const STATUS_CONFIG = {
   Completed: { pill: 'bg-emerald-50 text-emerald-600 border border-emerald-200', dot: 'bg-emerald-500', label: 'Completed' },
 };
 
-const URGENCY_COLOR = { 1: '#10b981', 2: '#f59e0b', 3: '#ef4444' };
-const URGENCY_LABEL = { 1: 'Low', 2: 'Medium', 3: 'High' };
+const URGENCY_COLOR  = { 1: '#10b981', 2: '#f59e0b', 3: '#ef4444' };
+const URGENCY_LABEL  = { 1: 'Low', 2: 'Medium', 3: 'High' };
 const CATEGORY_COLOR = { Food: '#f97316', Health: '#ef4444', Education: '#3b82f6', Shelter: '#10b981' };
 
 const INPUT = 'w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent bg-gray-50 focus:bg-white transition';
 
-export default function VolunteerPage() {
-  const { user } = useAuth();
-  const [assignments, setAssignments] = useState([]);
-  const [profile,     setProfile]     = useState(null);
-  const [form, setForm] = useState({ skills: [], availableSlots: [], availability: true, location: { state: '', district: '', city: '', area: '' } });
-  const [regMsg,     setRegMsg]     = useState('');
-  const [loading,    setLoading]    = useState(false);
-  const [responding, setResponding] = useState(null);
-  const [dataLoading, setDataLoading] = useState(true);
+// ── helper: get GPS coords as a promise ──────────────────────────────────────
+function getGPS() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+      ()  => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+}
 
-  const fetchData = () => {
+export default function VolunteerPage() {
+  const { user, login } = useAuth();
+  const [assignments,  setAssignments]  = useState([]);
+  const [profile,      setProfile]      = useState(null);
+  const [dataLoading,  setDataLoading]  = useState(true);
+  const [responding,   setResponding]   = useState(null);
+
+  // registration form
+  const [form,    setForm]    = useState({ skills: [], availableSlots: [], availability: true, location: { state: '', district: '', city: '', area: '' } });
+  const [regMsg,  setRegMsg]  = useState('');
+  const [regLoad, setRegLoad] = useState(false);
+
+  // edit profile
+  const [editOpen,  setEditOpen]  = useState(false);
+  const [editForm,  setEditForm]  = useState({ name: '', phone: '', skills: [], availableSlots: [], city: '', area: '' });
+  const [editMsg,   setEditMsg]   = useState({ type: '', text: '' });
+  const [editLoad,  setEditLoad]  = useState(false);
+
+  // availability toggle
+  const [toggling, setToggling] = useState(false);
+  const [availMsg, setAvailMsg] = useState('');
+
+  const fetchData = useCallback(() => {
     Promise.all([
       api.get('/assignments/mine').catch(() => ({ data: [] })),
       api.get('/volunteer/me').catch(() => ({ data: null })),
@@ -38,27 +62,105 @@ export default function VolunteerPage() {
       setProfile(p.data);
       setDataLoading(false);
     });
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Pre-fill edit form when profile loads
+  useEffect(() => {
+    if (profile) {
+      setEditForm({
+        name:           user?.name  || '',
+        phone:          user?.phone || '',
+        skills:         profile.skills         || [],
+        availableSlots: profile.availableSlots || [],
+        city:           profile.city           || '',
+        area:           profile.area           || '',
+      });
+    }
+  }, [profile, user]);
 
   const toggle = (key, val) =>
     setForm(f => ({ ...f, [key]: f[key].includes(val) ? f[key].filter(x => x !== val) : [...f[key], val] }));
 
+  const toggleEdit = (key, val) =>
+    setEditForm(f => ({ ...f, [key]: f[key].includes(val) ? f[key].filter(x => x !== val) : [...f[key], val] }));
+
+  // ── Register ──────────────────────────────────────────────────────────────
   const handleRegister = async e => {
     e.preventDefault();
     if (!form.skills.length)        return setRegMsg('Please select at least one skill.');
     if (!form.location.city.trim()) return setRegMsg('Please select your city.');
-    setLoading(true);
+    setRegLoad(true);
     try {
-      await api.post('/volunteer', { userId: user._id, ...form, city: form.location.city });
+      await api.post('/volunteer', { userId: user._id, ...form, city: form.location.city, area: form.location.area || '' });
       setRegMsg('');
       fetchData();
     } catch (err) {
       setRegMsg(err.response?.data?.message || 'Registration failed.');
-    } finally { setLoading(false); }
+    } finally { setRegLoad(false); }
   };
 
+  // ── Edit Profile save ─────────────────────────────────────────────────────
+  const handleEditSave = async e => {
+    e.preventDefault();
+    if (!editForm.skills.length) return setEditMsg({ type: 'error', text: 'Select at least one skill.' });
+    setEditLoad(true);
+    setEditMsg({ type: '', text: '' });
+    try {
+      const gps = profile?.availability ? await getGPS() : null;
+      await api.patch('/volunteer/profile', {
+        name:           editForm.name,
+        phone:          editForm.phone,
+        skills:         editForm.skills,
+        availableSlots: editForm.availableSlots,
+        city:           editForm.city,
+        area:           editForm.area,
+        latitude:       gps?.latitude  ?? null,
+        longitude:      gps?.longitude ?? null,
+      });
+      setEditMsg({ type: 'success', text: '✅ Profile updated successfully!' });
+      fetchData();
+      setTimeout(() => setEditOpen(false), 1200);
+    } catch (err) {
+      setEditMsg({ type: 'error', text: err.response?.data?.message || 'Update failed.' });
+    } finally { setEditLoad(false); }
+  };
+
+  // ── Availability toggle ───────────────────────────────────────────────────
+  const handleToggleAvailability = async () => {
+    setToggling(true);
+    setAvailMsg('');
+    try {
+      const goingOnline = !profile?.availability;
+      const gps = goingOnline ? await getGPS() : null;
+
+      if (goingOnline && !gps) {
+        setAvailMsg('⚠️ Could not get your location. Please allow location access and try again.');
+        setToggling(false);
+        return;
+      }
+      const { data } = await api.patch('/volunteer/availability', {
+        availability: goingOnline,
+        latitude:     gps?.latitude  ?? null,
+        longitude:    gps?.longitude ?? null,
+      });
+
+      fetchData();
+
+      if (goingOnline) {
+        setAvailMsg(data.nearbyCount > 0
+          ? `✅ You are now online near (${gps.latitude.toFixed(3)}, ${gps.longitude.toFixed(3)}). ${data.nearbyCount} nearby request(s) found — check your notifications!`
+          : `✅ You are now online near (${gps.latitude.toFixed(3)}, ${gps.longitude.toFixed(3)}). No nearby requests at the moment.`);
+      } else {
+        setAvailMsg('⏸️ You are now offline. You will not receive task notifications.');
+      }
+    } catch (err) {
+      setAvailMsg(err.response?.data?.message || 'Could not update availability.');
+    } finally { setToggling(false); }
+  };
+
+  // ── Task respond ──────────────────────────────────────────────────────────
   const respond = async (id, status) => {
     setResponding(id);
     try { await api.patch(`/assignments/${id}/respond`, { status }); fetchData(); }
@@ -84,20 +186,55 @@ export default function VolunteerPage() {
         <div className="flex flex-col gap-6">
           {/* Profile banner */}
           {profile && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
-                <span className="text-indigo-600 text-lg font-bold">{user?.name?.[0]?.toUpperCase()}</span>
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{user?.email} · {profile.city}</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {profile.skills.map(s => (
-                    <span key={s} className="text-[11px] font-semibold bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full border border-indigo-100">{s}</span>
-                  ))}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+                  <span className="text-indigo-600 text-lg font-bold">{user?.name?.[0]?.toUpperCase()}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{user?.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{user?.email} · {profile.city}{profile.area ? ', ' + profile.area : ''}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {profile.skills.map(s => (
+                      <span key={s} className="text-[11px] font-semibold bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full border border-indigo-100">{s}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* Availability toggle */}
+                  <button
+                    onClick={handleToggleAvailability}
+                    disabled={toggling}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition disabled:opacity-60 ${
+                      profile.availability
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${profile.availability ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                    {toggling ? 'Updating...' : profile.availability ? 'Online' : 'Offline'}
+                  </button>
+                  {/* Edit profile button */}
+                  <button
+                    onClick={() => setEditOpen(o => !o)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition"
+                  >
+                    {editOpen ? 'Cancel' : '✏️ Edit Profile'}
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-4 shrink-0">
+
+              {/* Availability message */}
+              {availMsg && (
+                <div className={`text-xs px-3 py-2 rounded-xl border ${
+                  availMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                  : availMsg.startsWith('⏸') ? 'bg-gray-50 text-gray-600 border-gray-200'
+                  : 'bg-red-50 text-red-600 border-red-100'
+                }`}>{availMsg}</div>
+              )}
+
+              {/* Stats row */}
+              <div className="flex gap-4 pt-2 border-t border-gray-100">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-gray-900">{assignments.length}</p>
                   <p className="text-xs text-gray-400">Total</p>
@@ -111,6 +248,71 @@ export default function VolunteerPage() {
                   <p className="text-xs text-gray-400">Done</p>
                 </div>
               </div>
+
+              {/* Edit Profile Panel */}
+              {editOpen && (
+                <form onSubmit={handleEditSave} className="flex flex-col gap-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">✏️ Edit Profile</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Full Name</label>
+                      <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="Full name" className={INPUT} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Phone Number</label>
+                      <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                        placeholder="e.g. 9876543210" className={INPUT} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">City</label>
+                      <input value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))}
+                        placeholder="City" className={INPUT} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Area</label>
+                      <input value={editForm.area} onChange={e => setEditForm(f => ({ ...f, area: e.target.value }))}
+                        placeholder="Area / Locality" className={INPUT} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Skills</p>
+                    <div className="flex flex-wrap gap-2">
+                      {SKILLS.map(s => (
+                        <button type="button" key={s} onClick={() => toggleEdit('skills', s)}
+                          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                            editForm.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'
+                          }`}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Available Slots</p>
+                    <div className="flex flex-wrap gap-2">
+                      {SLOTS.map(s => (
+                        <button type="button" key={s} onClick={() => toggleEdit('availableSlots', s)}
+                          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                            editForm.availableSlots.includes(s) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-300'
+                          }`}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {editMsg.text && (
+                    <div className={`text-xs px-3 py-2 rounded-xl border ${
+                      editMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
+                    }`}>{editMsg.text}</div>
+                  )}
+
+                  <button type="submit" disabled={editLoad}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-60">
+                    {editLoad ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </form>
+              )}
             </div>
           )}
 

@@ -1,4 +1,5 @@
 const Request = require('../models/Request');
+const { triggerProximityNotifications } = require('./notificationController');
 
 // GET /api/requests
 exports.getAllRequests = async (req, res) => {
@@ -53,6 +54,9 @@ exports.createRequest = async (req, res) => {
       imageUrl,
       submittedBy: req.user?._id || null,
     }).save();
+
+    // Fire-and-forget proximity notifications
+    triggerProximityNotifications(request);
 
     res.status(201).json(request);
   } catch (err) {

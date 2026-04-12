@@ -14,7 +14,7 @@ import { useAuth } from './context/AuthContext';
 
 function AppLayout() {
   const { user } = useAuth();
-  if (!user) return null;
+  if (!user) return <Navigate to="/login" replace />;
   return (
     <div className="flex h-screen bg-[#f4f6fb] overflow-hidden">
       <Sidebar />

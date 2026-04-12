@@ -1,6 +1,8 @@
 const Volunteer  = require('../models/Volunteer');
 const Assignment = require('../models/Assignment');
 const Request    = require('../models/Request');
+const User       = require('../models/User');
+const Notification = require('../models/Notification');
 
 // ── Skill map: category → required skills ──────────────────────────────────
 const SKILL_MAP = {
@@ -265,9 +267,81 @@ exports.getMyAssignments = async (req, res) => {
     const volunteer = await Volunteer.findOne({ userId: req.user._id });
     if (!volunteer) return res.json([]);
     const assignments = await Assignment.find({ volunteerId: volunteer._id })
-      .populate('requestId', 'title description category city area urgency peopleAffected priorityScore status')
+      .populate('requestId', 'title description category city area urgency peopleAffected priorityScore status latitude longitude')
       .sort({ createdAt: -1 });
     res.json(assignments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── GET /api/volunteer/tasks — nearby pending requests within 5km ──────────
+exports.getNearbyTasks = async (req, res) => {
+  try {
+    const volunteer = await Volunteer.findOne({ userId: req.user._id });
+    if (!volunteer)
+      return res.status(404).json({ message: 'Volunteer profile not found. Please register first.' });
+
+    const lat = req.query.lat ? Number(req.query.lat) : volunteer.currentLatitude;
+    const lng = req.query.lng ? Number(req.query.lng) : volunteer.currentLongitude;
+
+    // No location at all — return empty array, never show all
+    if (!lat || !lng) return res.json([]);
+
+    const RADIUS_KM = 50;
+    const requests  = await Request.find({ status: 'Pending' });
+
+    const nearby = requests
+      .filter((r) => r.latitude && r.longitude)
+      .map((r) => {
+        const dist = distanceKm(lat, lng, r.latitude, r.longitude);
+        return { ...r.toObject(), distanceKm: parseFloat(dist.toFixed(2)) };
+      })
+      .filter((r) => r.distanceKm <= RADIUS_KM)
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+
+    res.json(nearby);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── POST /api/volunteer/accept  { assignmentId } ──────────────────────────
+exports.acceptTask = async (req, res) => {
+  try {
+    const assignment = await Assignment.findByIdAndUpdate(
+      req.body.assignmentId, { status: 'Accepted' }, { new: true }
+    ).populate('requestId', 'title');
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    res.json(assignment);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── POST /api/volunteer/reject  { assignmentId } ──────────────────────────
+exports.rejectTask = async (req, res) => {
+  try {
+    const assignment = await Assignment.findByIdAndUpdate(
+      req.body.assignmentId, { status: 'Rejected' }, { new: true }
+    ).populate('requestId', '_id title');
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    await Request.findByIdAndUpdate(assignment.requestId._id, { status: 'Pending' });
+    res.json(assignment);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── POST /api/volunteer/complete  { assignmentId } ────────────────────────
+exports.completeTask = async (req, res) => {
+  try {
+    const assignment = await Assignment.findByIdAndUpdate(
+      req.body.assignmentId, { status: 'Completed' }, { new: true }
+    ).populate('requestId', '_id title');
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    await Request.findByIdAndUpdate(assignment.requestId._id, { status: 'Resolved' });
+    res.json(assignment);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -295,4 +369,59 @@ exports.respondToAssignment = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+};
+
+// PATCH /api/volunteer/profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, phone, skills, city, area, availableSlots, latitude, longitude } = req.body;
+    const userUpdate = {};
+    if (name && name.trim())  userUpdate.name  = name.trim();
+    if (phone && phone.trim()) userUpdate.phone = phone.trim();
+    if (Object.keys(userUpdate).length) await User.findByIdAndUpdate(req.user._id, userUpdate);
+    const volUpdate = {};
+    if (skills && skills.length) volUpdate.skills = skills;
+    if (city && city.trim())     volUpdate.city   = city.trim();
+    if (area && area.trim())     volUpdate.area   = area.trim();
+    if (availableSlots)          volUpdate.availableSlots = availableSlots;
+    if (latitude  != null)       volUpdate.latitude  = Number(latitude);
+    if (longitude != null)       volUpdate.longitude = Number(longitude);
+    const existing = await Volunteer.findOne({ userId: req.user._id });
+    if (existing && existing.availability && latitude != null && longitude != null) {
+      volUpdate.currentLatitude    = Number(latitude);
+      volUpdate.currentLongitude   = Number(longitude);
+      volUpdate.lastLocationUpdate = new Date();
+    }
+    const volunteer = await Volunteer.findOneAndUpdate({ userId: req.user._id }, volUpdate, { new: true }).populate('userId', 'name email phone');
+    if (!volunteer) return res.status(404).json({ message: 'Volunteer profile not found' });
+    res.json(volunteer);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// PATCH /api/volunteer/availability
+exports.toggleAvailability = async (req, res) => {
+  try {
+    const { availability, latitude, longitude } = req.body;
+    const isOnline = Boolean(availability);
+    const update = { availability: isOnline };
+    if (isOnline && latitude != null && longitude != null) {
+      update.currentLatitude    = Number(latitude);
+      update.currentLongitude   = Number(longitude);
+      update.lastLocationUpdate = new Date();
+    } else if (!isOnline) {
+      update.currentLatitude    = null;
+      update.currentLongitude   = null;
+      update.lastLocationUpdate = null;
+    }
+    const volunteer = await Volunteer.findOneAndUpdate({ userId: req.user._id }, update, { new: true });
+    if (!volunteer) return res.status(404).json({ message: 'Volunteer profile not found' });
+    let nearbyCount = 0;
+    if (isOnline && update.currentLatitude && update.currentLongitude) {
+      const RADIUS_KM = 50;
+      const pendingReqs = await Request.find({ status: 'Pending', latitude: { ['$ne']: null }, longitude: { ['$ne']: null } });
+      const nearbyDocs = pendingReqs.filter(r => { const d = distanceKm(update.currentLatitude, update.currentLongitude, r.latitude, r.longitude); return d !== null && d <= RADIUS_KM; }).map(r => ({ volunteerId: volunteer._id, requestId: r._id, message: 'Urgent need near you: ' + r.title + ' (' + r.category + ' - ' + r.city + ')', distanceKm: parseFloat(distanceKm(update.currentLatitude, update.currentLongitude, r.latitude, r.longitude).toFixed(2)), read: false }));
+      if (nearbyDocs.length) { await Notification.insertMany(nearbyDocs, { ordered: false }).catch(() => {}); nearbyCount = nearbyDocs.length; }
+    }
+    res.json({ availability: volunteer.availability, currentLatitude: volunteer.currentLatitude, currentLongitude: volunteer.currentLongitude, nearbyCount });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 };

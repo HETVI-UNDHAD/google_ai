@@ -2,6 +2,17 @@ import { useEffect, useState } from 'react';
 import api from '../api/axios';
 import NeedMap from '../components/NeedMap';
 
+function getGPS() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      ()  => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+}
+
 const CATEGORIES    = ['All', 'Food', 'Health', 'Education', 'Shelter'];
 const STATUSES      = ['All', 'Pending', 'In Progress', 'Resolved'];
 const URGENCY_LABEL = { '1': 'Low', '2': 'Medium', '3': 'High' };
@@ -14,6 +25,24 @@ export default function MapPage() {
   const [status,   setStatus]   = useState('All');
   const [urgency,  setUrgency]  = useState('All');
   const [loading,  setLoading]  = useState(true);
+  const [userGPS,  setUserGPS]  = useState(null);
+
+  useEffect(() => {
+    getGPS().then(async coords => {
+      if (!coords) return;
+      try {
+        const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${coords.lat}&lon=${coords.lng}&format=json`);
+        const data = await res.json();
+        const a    = data.address || {};
+        const name = a.road || a.neighbourhood || a.suburb || a.village || a.town || a.city || 'Your Location';
+        const city = a.city || a.town || a.village || a.county || '';
+        const state = a.state || '';
+        setUserGPS({ ...coords, name, city, state, display: [name, city, state].filter(Boolean).join(', ') });
+      } catch {
+        setUserGPS({ ...coords, name: 'Your Location', display: `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     api.get('/requests/sorted')
@@ -109,7 +138,7 @@ export default function MapPage() {
               <p className="text-sm text-gray-400 font-medium">Loading map data...</p>
             </div>
           ) : (
-            <NeedMap requests={filtered} />
+            <NeedMap requests={filtered} userLocation={userGPS} />
           )}
         </div>
 
